@@ -1,173 +1,103 @@
--- QuickRSS: Image Cache Utilities
--- Downloads and caches remote images to disk. Provides helper functions to
--- rewrite remote <img src> URLs in HTML to local filenames, and to strip
--- publisher-injected width/height/style attributes so CSS can control layout.
+-- QuickRSS: Image download
 --
 -- Public API:
---   Images.IMAGE_DIR                    path to the image cache directory
---   Images.downloadImage(url)           → local filename (relative to IMAGE_DIR) or nil
---   Images.localizeImages(html)         → html with remote src rewritten to local filenames
---   Images.constrainImages(html)        → html with width/height/style stripped from <img>
+--   Images.download(url)          → data, mime_type, or nil when the download failed or
+--                                   the format is one the reader cannot render
+--   Images.dataUri(data, mime)    → "data:<mime>;base64,<data>" for embedding in an article
+--   Images.extension(mime)        → file extension for a supported mime type
 
-local DataStorage = require("datastorage")
-local lfs         = require("libs/libkoreader-lfs")
-local logger      = require("logger")
+local logger = require("logger")
+local mime   = require("mime")
 
-local IMAGE_DIR = DataStorage:getDataDir() .. "/quickrss/images"
-lfs.mkdir(IMAGE_DIR)  -- no-op if already exists
+-- Formats crengine renders.  Anything else (HEIC, AVIF, HTML error pages…)
+-- would show as a broken box, so it is dropped instead.
+local MIME_BY_EXT = {
+    jpg  = "image/jpeg",
+    jpeg = "image/jpeg",
+    png  = "image/png",
+    gif  = "image/gif",
+    webp = "image/webp",
+    svg  = "image/svg+xml",
+    bmp  = "image/bmp",
+}
+local SUPPORTED = {}
+for _, m in pairs(MIME_BY_EXT) do SUPPORTED[m] = true end
 
--- Non-cryptographic hash → stable 8-char hex filename prefix.
-local function urlHash(url)
-    local h = 5381
-    for i = 1, #url do
-        h = ((h * 33) + url:byte(i)) % 0x100000000
-    end
-    return string.format("%08x", h)
-end
-
--- Best-effort extension extraction; defaults to "jpg".
-local function guessExt(url)
-    return url:match("%.(%a%a%a?%a?)%?")
-        or url:match("%.(%a%a%a?%a?)$")
-        or "jpg"
-end
-
--- Decode HTML entities in a URL extracted from an src attribute.
 local function decodeUrl(url)
-    return url:gsub("&amp;", "&"):gsub("&lt;", "<"):gsub("&gt;", ">")
-              :gsub("&quot;", '"'):gsub("&apos;", "'")
+    return (url:gsub("&amp;", "&"):gsub("&lt;", "<"):gsub("&gt;", ">")
+               :gsub("&quot;", '"'):gsub("&apos;", "'"))
 end
 
--- ── Download backend ────────────────────────────────────────────────────────
-local function downloadImageLuaSec(url, fpath)
+-- Synchronous GET following up to three redirects, retrying transient
+-- network errors twice.  Returns body, content_type or nil, err.
+local function fetch(url)
     local https      = require("ssl.https")
     local ltn12      = require("ltn12")
     local socketutil = require("socketutil")
 
     local MAX_RETRIES = 2
-    local sink, ok, code, headers
-
     for attempt = 1, MAX_RETRIES + 1 do
         local current_url = url
-        local net_err = false
+        local sink, ok, code, headers
         for _ = 1, 3 do
             sink = {}
-            socketutil:set_timeout(
-                socketutil.LARGE_BLOCK_TIMEOUT,
-                socketutil.LARGE_TOTAL_TIMEOUT
-            )
-            ok, code, headers = https.request{
-                url  = current_url,
-                sink = ltn12.sink.table(sink),
-            }
+            socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT)
+            ok, code, headers = https.request{ url = current_url, sink = ltn12.sink.table(sink) }
             socketutil:reset_timeout()
-
-            if not ok then
-                net_err = true
-                break
-            end
-            if code == 301 or code == 302 or code == 303
-            or code == 307 or code == 308 then
+            if not ok then break end
+            if code == 301 or code == 302 or code == 303 or code == 307 or code == 308 then
                 local location = headers and headers["location"]
                 if not location or location == "" then
-                    logger.warn("QuickRSS: redirect with no Location:", url, code)
-                    return false
+                    return nil, "redirect without Location"
                 end
-                logger.dbg("QuickRSS: image redirect", code, "→", location)
                 current_url = location
             else
                 break
             end
         end
-
-        if net_err then
-            if attempt <= MAX_RETRIES then
-                logger.dbg("QuickRSS: image retry", attempt, "for:", url, code)
-                os.execute("sleep 1")
-            else
-                logger.warn("QuickRSS: image download error:", url, code)
-                return false
-            end
-        elseif code ~= 200 then
-            logger.warn("QuickRSS: image download failed:", url, "HTTP", code)
-            return false
-        else
-            break  -- success
+        if ok then
+            if code ~= 200 then return nil, "HTTP " .. tostring(code) end
+            return table.concat(sink), headers and headers["content-type"] or ""
         end
+        if attempt > MAX_RETRIES then return nil, tostring(code) end
+        logger.dbg("QuickRSS: image retry", attempt, "for:", url, code)
     end
-
-    local f = io.open(fpath, "wb")
-    if not f then return false end
-    local write_ok, write_err = pcall(function()
-        f:write(table.concat(sink))
-    end)
-    f:close()
-    if not write_ok then
-        os.remove(fpath)
-        logger.warn("QuickRSS: image write failed:", fpath, write_err)
-        return false
-    end
-    return true
 end
 
--- ── Public download function ─────────────────────────────────────────────────
--- Download one image URL into IMAGE_DIR.  Returns the local filename (relative
--- to IMAGE_DIR) on success, or nil on failure.  Already-cached files are
--- returned immediately without a network request.
-local function downloadImage(url)
+local function mimeType(url, content_type)
+    local declared = (content_type or ""):match("^%s*([^;%s]+)")
+    if declared and SUPPORTED[declared] then return declared end
+    local ext = url:match("%.(%a%a%a?%a?)%?") or url:match("%.(%a%a%a?%a?)$")
+    return ext and MIME_BY_EXT[ext:lower()]
+end
+
+local EXT_BY_MIME = {}
+for ext, m in pairs(MIME_BY_EXT) do EXT_BY_MIME[m] = ext end
+EXT_BY_MIME["image/jpeg"] = "jpg"
+
+local Images = {}
+
+function Images.download(url)
     url = decodeUrl(url)
-
-    local fname = urlHash(url) .. "." .. guessExt(url)
-    local fpath = IMAGE_DIR .. "/" .. fname
-
-    -- Cache hit
-    local f = io.open(fpath, "rb")
-    if f then f:close(); return fname end
-
-    local ok = downloadImageLuaSec(url, fpath)
-    if ok then
-        logger.dbg("QuickRSS: cached image", fname, "from:", url)
-        return fname
-    else
-        logger.warn("QuickRSS: image download failed:", url)
+    local data, content_type = fetch(url)
+    if not data then
+        logger.warn("QuickRSS: image download failed:", url, content_type)
         return nil
     end
+    local mime_type = mimeType(url, content_type)
+    if not mime_type then
+        logger.warn("QuickRSS: unsupported image type:", url, content_type)
+        return nil
+    end
+    return data, mime_type
 end
 
--- Strip width/height/style attributes from <img> tags so CSS max-width can
--- take effect.  Publishers often embed explicit pixel dimensions that make
--- images overflow the viewport regardless of what the stylesheet says.
-local function constrainImages(html)
-    return html:gsub("(<[Ii][Mm][Gg]%s)([^>]*)(>)", function(open, attrs, close)
-        attrs = attrs:gsub('%s*width%s*=%s*"[^"]*"', "")
-        attrs = attrs:gsub("%s*width%s*=%s*'[^']*'", "")
-        attrs = attrs:gsub('%s*height%s*=%s*"[^"]*"', "")
-        attrs = attrs:gsub("%s*height%s*=%s*'[^']*'", "")
-        attrs = attrs:gsub('%s*style%s*=%s*"[^"]*"', "")
-        attrs = attrs:gsub("%s*style%s*=%s*'[^']*'", "")
-        return open .. attrs .. close
-    end)
+function Images.dataUri(data, mime_type)
+    return "data:" .. mime_type .. ";base64," .. mime.b64(data)
 end
 
--- Rewrite every remote <img src="https?://..."> in html to a local filename
--- relative to IMAGE_DIR.  Handles both double- and single-quoted src values.
-local function localizeImages(html)
-    -- double-quoted src
-    html = html:gsub('([Ss][Rr][Cc]%s*=%s*)"(https?://[^"]+)"', function(eq, url)
-        local fname = downloadImage(url)
-        return eq .. '"' .. (fname or url) .. '"'
-    end)
-    -- single-quoted src
-    html = html:gsub("([Ss][Rr][Cc]%s*=%s*)'(https?://[^']+)'", function(eq, url)
-        local fname = downloadImage(url)
-        return eq .. "'" .. (fname or url) .. "'"
-    end)
-    return html
+function Images.extension(mime_type)
+    return EXT_BY_MIME[mime_type]
 end
 
-return {
-    IMAGE_DIR       = IMAGE_DIR,
-    downloadImage   = downloadImage,
-    localizeImages  = localizeImages,
-    constrainImages = constrainImages,
-}
+return Images

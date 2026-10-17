@@ -1,6 +1,6 @@
 return {
     name = "QuickRSS",
-    description = "A fast, standalone RSS reader for KOReader",
-    version = "0.2.1",
+    description = "Fetches RSS/Atom feeds into HTML articles for KOReader's file browser",
+    version = "0.3.0",
     author = "qewer33",
 }

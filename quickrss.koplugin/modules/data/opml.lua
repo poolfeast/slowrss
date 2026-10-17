@@ -1,39 +1,26 @@
 -- QuickRSS: OPML Module
--- Reads and writes the standard OPML 1.0 feed-list format so users can
--- manage their subscriptions from a computer (text editor, another RSS
--- reader, etc.) without touching the device UI.
+-- Pure Lua (no KOReader dependencies).  Reads and writes the standard OPML
+-- feed-list format so subscriptions can be managed from a computer or
+-- imported from another RSS reader.  Nested <outline> groups are folders:
+-- a feed inside <outline text="Tech"> gets folder = "Tech", and its articles
+-- are written to a "Tech/<feed name>" directory.
 --
--- The file is stored in the dedicated plugin data directory:
---   <koreader data dir>/quickrss/feeds.opml
+-- Feeds may carry a title filter as extra attributes, which other readers
+-- ignore:  quickrssInclude="space|nasa"  quickrssExclude="deals|sponsored"
 --
 -- Public API:
---   OPML.read([path])          → { {name, url}, … }  or nil if file missing
---   OPML.write([path], feeds)  → true on success, false on I/O error
---   OPML.OPML_FILE             default path (exposed for Config / README)
-
-local DataStorage = require("datastorage")
-local logger      = require("logger")
-
-local OPML_FILE = DataStorage:getDataDir() .. "/quickrss/feeds.opml"
+--   OPML.parse(content)        → { {name, url, folder, include, exclude}, … }  missing values are ""
+--   OPML.serialize(feeds)      → OPML document string
+--   OPML.read(path)            → feeds, or nil if the file does not exist
+--   OPML.write(path, feeds)    → true on success, false on I/O error
 
 local OPML = {}
 
--- Reverse the five XML entity escapes.
 local function unescAttr(s)
-    return s:gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"')
-            :gsub("&apos;", "'"):gsub("&amp;", "&")
+    return (s:gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"')
+             :gsub("&apos;", "'"):gsub("&amp;", "&"))
 end
 
--- Extract a named XML attribute value from a raw tag string.
--- Handles both double- and single-quoted values.  Entity-decodes the result
--- so round-trip write → read does not accumulate escaping.
-local function getAttr(tag, name)
-    local val = tag:match(name .. '%s*=%s*"([^"]*)"')
-             or tag:match(name .. "%s*=%s*'([^']*)'")
-    return val and unescAttr(val) or nil
-end
-
--- Escape the five XML special characters for use inside an attribute value.
 local function escAttr(s)
     return (s or "")
         :gsub("&",  "&amp;")
@@ -43,58 +30,101 @@ local function escAttr(s)
         :gsub(">",  "&gt;")
 end
 
--- Read feeds from an OPML file.
--- Returns a list of { name = string, url = string } tables, or nil if the
--- file does not exist (so callers can distinguish "missing" from "empty").
+local function getAttr(tag, name)
+    local val = tag:match(name .. '%s*=%s*"([^"]*)"')
+             or tag:match(name .. "%s*=%s*'([^']*)'")
+    return val and unescAttr(val) or nil
+end
+
+-- Walk the <outline> tags in document order, keeping a stack of the folders
+-- currently open.  Self-closing outlines with an xmlUrl are feeds; outlines
+-- with children are folders.
+function OPML.parse(content)
+    local feeds = {}
+    local stack = {}
+    for closing, attrs in content:gmatch("<(/?)outline([^>]*)>") do
+        if closing == "/" then
+            table.remove(stack)
+        else
+            local self_closing = attrs:match("/%s*$") ~= nil
+            local name = getAttr(attrs, "text") or getAttr(attrs, "title") or ""
+            local url  = getAttr(attrs, "xmlUrl")
+            if url and url ~= "" then
+                table.insert(feeds, {
+                    name    = name,
+                    url     = url,
+                    folder  = table.concat(stack, "/"),
+                    include = getAttr(attrs, "quickrssInclude") or "",
+                    exclude = getAttr(attrs, "quickrssExclude") or "",
+                })
+            end
+            if not self_closing then
+                table.insert(stack, name)
+            end
+        end
+    end
+    return feeds
+end
+
+-- Group feeds by folder path (in order of first appearance) and emit nested
+-- outlines.
+function OPML.serialize(feeds)
+    local root = { folders = {}, order = {}, feeds = {} }
+    for _, feed in ipairs(feeds) do
+        local node = root
+        if feed.folder and feed.folder ~= "" then
+            for segment in feed.folder:gmatch("[^/]+") do
+                if not node.folders[segment] then
+                    node.folders[segment] = { folders = {}, order = {}, feeds = {} }
+                    table.insert(node.order, segment)
+                end
+                node = node.folders[segment]
+            end
+        end
+        table.insert(node.feeds, feed)
+    end
+
+    local lines = {
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<opml version="1.0">',
+        "  <head><title>QuickRSS Feeds</title></head>",
+        "  <body>",
+    }
+    local function emit(node, indent)
+        for _, feed in ipairs(node.feeds) do
+            local filter = ""
+            if feed.include ~= "" then filter = filter .. string.format(' quickrssInclude="%s"', escAttr(feed.include)) end
+            if feed.exclude ~= "" then filter = filter .. string.format(' quickrssExclude="%s"', escAttr(feed.exclude)) end
+            table.insert(lines, string.format('%s<outline text="%s" title="%s" type="rss" xmlUrl="%s"%s/>',
+                indent, escAttr(feed.name), escAttr(feed.name), escAttr(feed.url), filter))
+        end
+        for _, name in ipairs(node.order) do
+            table.insert(lines, string.format('%s<outline text="%s" title="%s">',
+                indent, escAttr(name), escAttr(name)))
+            emit(node.folders[name], indent .. "  ")
+            table.insert(lines, indent .. "</outline>")
+        end
+    end
+    emit(root, "    ")
+    table.insert(lines, "  </body>")
+    table.insert(lines, "</opml>")
+    return table.concat(lines, "\n") .. "\n"
+end
+
 function OPML.read(path)
-    path = path or OPML_FILE
     local f = io.open(path, "r")
     if not f then return nil end
     local content = f:read("*a")
     f:close()
-
-    local feeds = {}
-    -- Match every <outline …/> or <outline …> regardless of attribute order.
-    for tag in content:gmatch("<outline%s+([^>]*)/?%s*>") do
-        local name = getAttr(tag, "text")
-        local url  = getAttr(tag, "xmlUrl")
-        if name and url and url ~= "" then
-            table.insert(feeds, { name = name, url = url })
-        end
-    end
-    logger.dbg("QuickRSS: loaded", #feeds, "feeds from OPML")
-    return feeds
+    return OPML.parse(content)
 end
 
--- Write a list of { name, url } feeds to an OPML file.
--- Returns true on success, false on I/O error.
 function OPML.write(path, feeds)
-    path = path or OPML_FILE
-    local lines = {
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        '<opml version="1.0">',
-        '  <head><title>QuickRSS Feeds</title></head>',
-        '  <body>',
-    }
-    for _, feed in ipairs(feeds) do
-        table.insert(lines, string.format(
-            '    <outline text="%s" type="rss" xmlUrl="%s"/>',
-            escAttr(feed.name), escAttr(feed.url)))
-    end
-    table.insert(lines, '  </body>')
-    table.insert(lines, '</opml>')
-
-    local f, err = io.open(path, "w")
-    if not f then
-        logger.warn("QuickRSS: could not write OPML file:", path, err)
-        return false
-    end
-    f:write(table.concat(lines, "\n") .. "\n")
+    local f = io.open(path, "w")
+    if not f then return false end
+    f:write(OPML.serialize(feeds))
     f:close()
-    logger.dbg("QuickRSS: wrote", #feeds, "feeds to OPML")
     return true
 end
-
-OPML.OPML_FILE = OPML_FILE
 
 return OPML
