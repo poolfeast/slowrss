@@ -19,7 +19,7 @@ local ArticleDoc = require("modules/data/article_doc")
 local Config     = require("modules/data/config")
 local Dates      = require("modules/data/dates")
 local Parser     = require("modules/data/parser")
-local Text       = require("modules/data/text")
+local Filter     = require("modules/data/filter")
 local lfs        = require("libs/libkoreader-lfs")
 
 local Fetcher = {}
@@ -45,7 +45,7 @@ local function selectNew(articles, feed, dir, limit)
     local newest
     for _, art in ipairs(articles) do
         if #candidates >= limit then break end
-        if Text.titleMatches(art.title, feed.include, feed.exclude) then
+        if Filter.matches(art.title, feed.include, feed.exclude) then
             local path, exists = ArticleDoc.locate(art, dir)
             local ts = Dates.parse(art.date)
             if exists then

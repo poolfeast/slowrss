@@ -15,9 +15,15 @@
 --   Html.stripLeadingTitle(html, title)   → html without a leading heading equal to title
 
 local Dates = require("modules/data/dates")
-local Text  = require("modules/data/text")
+local md5   = require("ffi/sha2").md5
+local url   = require("socket.url")
+local util  = require("util")
 
 local Html = {}
+
+local function escape(s)
+    return (util.htmlEscape(s or ""))
+end
 
 local CSS = [[
 .meta { font-size: 0.85em; color: #555555; margin: 0 0 0.8em; }
@@ -29,9 +35,9 @@ hr { border: none; border-top: 1px solid #999999; margin: 0.8em 0 1em; }
 -- date, or the link hash when undated, to tell the articles apart.
 function Html.filename(article, disambiguate)
     local title = (article.title or ""):gsub("%s+", " "):match("^%s*(.-)%s*$")
-    if title == "" then title = Text.hash(article.link) end
+    if title == "" then title = md5(article.link):sub(1, 8) end
     if disambiguate then
-        title = title .. " (" .. (Dates.iso(article.date) or Text.hash(article.link)) .. ")"
+        title = title .. " (" .. (Dates.iso(article.date) or md5(article.link):sub(1, 8)) .. ")"
     end
     return title .. ".html"
 end
@@ -39,7 +45,7 @@ end
 -- First thing in <head>, so the fetcher can tell which article a file holds
 -- by reading only its first bytes.
 function Html.canonical(link)
-    return '<link rel="canonical" href="' .. Text.escapeHtml(link) .. '"/>'
+    return '<link rel="canonical" href="' .. escape(link) .. '"/>'
 end
 
 -- Remove the first <h1/h2/h3> whose plain text matches title.  Feeds often
@@ -62,26 +68,18 @@ function Html.stripLeadingTitle(html, title)
     return result
 end
 
--- Resolve one URL against the article URL.  Already-absolute URLs, fragments
--- and non-http schemes (mailto:, …) are returned untouched.
-local function absolutize(url, base)
-    if url == "" or url:match("^#") or url:match("^%a[%w+.%-]*:") then return url end
-    local scheme, host, path = base:match("^(%a[%w+.%-]*)://([^/?#]+)([^?#]*)")
-    if not scheme then return url end
-    if url:match("^//") then return scheme .. ":" .. url end
-    if url:match("^/") then return scheme .. "://" .. host .. url end
-    if url:match("^%?") then return scheme .. "://" .. host .. (path ~= "" and path or "/") .. url end
-    local dir = path:match("^(.*/)") or "/"
-    return scheme .. "://" .. host .. dir .. url
+-- Fragments stay as they are so in-article footnotes keep working.
+local function absolutize(href, base)
+    if href:match("^#") or base == "" then return href end
+    return url.absolute(base, href)
 end
-Html.absolutizeUrl = absolutize
 
 -- Relative links inside a standalone file would point nowhere; resolve them
 -- against the article URL so the reader's link dialog gets a usable URL.
 function Html.absolutizeLinks(html, base_url)
     if not base_url or base_url == "" then return html end
-    return (html:gsub("([Hh][Rr][Ee][Ff]%s*=%s*)([\"'])(.-)%2", function(attr, quote, url)
-        return attr .. quote .. absolutize(url, base_url) .. quote
+    return (html:gsub("([Hh][Rr][Ee][Ff]%s*=%s*)([\"'])(.-)%2", function(attr, quote, href)
+        return attr .. quote .. absolutize(href, base_url) .. quote
     end))
 end
 
@@ -125,14 +123,14 @@ function Html.document(article, opts)
         table.insert(parts, '<div class="banner"><img src="' .. lead .. '"/></div>')
     end
 
-    table.insert(parts, "<h1>" .. Text.escapeHtml(article.title) .. "</h1>")
+    table.insert(parts, "<h1>" .. escape(article.title) .. "</h1>")
 
     local meta = {}
     for _, part in ipairs({ article.source, article.author }) do
-        if part and part ~= "" then table.insert(meta, Text.escapeHtml(part)) end
+        if part and part ~= "" then table.insert(meta, escape(part)) end
     end
     local date = Dates.display(article.date)
-    if date then table.insert(meta, Text.escapeHtml(date)) end
+    if date then table.insert(meta, escape(date)) end
     if #meta > 0 then
         table.insert(parts, '<p class="meta">' .. table.concat(meta, " &#183; ") .. "</p>")
     end
@@ -143,7 +141,6 @@ function Html.document(article, opts)
     if lead then
         body = stripLeadImageVariants(body, article.image_url)
     end
-    body = Text.sanitizeHtml(body)
     body = Html.absolutizeLinks(body, article.link)
     body = embedImages(body, article.link, opts)
     table.insert(parts, body)
@@ -154,7 +151,7 @@ function Html.document(article, opts)
         "<head>",
         Html.canonical(article.link),
         '<meta charset="utf-8"/>',
-        "<title>" .. Text.escapeHtml(article.title) .. "</title>",
+        "<title>" .. escape(article.title) .. "</title>",
         "<style>" .. CSS .. "</style>",
         "</head>",
         "<body>",

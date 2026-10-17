@@ -69,16 +69,16 @@
           luacheck quickrss.koplugin spec
           touch $out
         '';
-        spec = pkgs.runCommand "quickrss-spec" { nativeBuildInputs = [ pkgs.luajit ]; } ''
-          cd ${self}
-          luajit spec/run.lua
+        spec = pkgs.runCommand "quickrss-spec" { } ''
+          cd ${pkgs.koreader}/lib/koreader
+          ./luajit ${self}/spec/run.lua
           touch $out
         '';
       });
 
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
-          packages = [ pkgs.koreader pkgs.luajit pkgs.luajitPackages.luacheck pkgs.rsync ];
+          packages = [ pkgs.koreader pkgs.luajitPackages.luacheck pkgs.rsync ];
         };
       });
     };

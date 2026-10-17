@@ -8,10 +8,6 @@ globals = {
     "G_defaults",
 }
 
-exclude_files = {
-    "quickrss.koplugin/modules/lib/xml.lua",
-    "quickrss.koplugin/modules/lib/handler.lua",
-}
 
 ignore = {
     "211/__*", -- Unused local variable

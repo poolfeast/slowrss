@@ -60,7 +60,9 @@ echo "KO_HOME=$KO_HOME"
 SDL_VIDEODRIVER=dummy EMULATE_READER_W="${EMULATE_READER_W:-600}" EMULATE_READER_H="${EMULATE_READER_H:-800}" \
     koreader -d "$KO_HOME" > "$log" 2>&1 &
 ko_pid=$!
-trap 'kill "$ko_pid" 2>/dev/null || true' EXIT
+# koreader is a wrapper script; stop the reader process it starts too.
+stop_koreader() { pkill -f "reader.lua -d $KO_HOME" 2>/dev/null || true; kill "$ko_pid" 2>/dev/null || true; }
+trap stop_koreader EXIT
 
 wait_for() { # wait_for <seconds> <command...>: poll until the command succeeds
     local deadline=$(( $(date +%s) + $1 )); shift
@@ -107,7 +109,7 @@ shot "$KO_HOME/smoke-article-p2.png"
 echo "log warnings/errors (if any):"
 grep -aiE "quickrss|traceback|error" "$log" | grep -viE "QuickRSS (fetching|fetch OK|parsed feed|full-text fetch)" | sed 's/^/  /' | tail -30 || true
 
-kill "$ko_pid" 2>/dev/null || true
+stop_koreader
 wait "$ko_pid" 2>/dev/null || true
 trap - EXIT
 echo "done"

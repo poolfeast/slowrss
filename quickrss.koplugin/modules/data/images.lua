@@ -1,92 +1,39 @@
--- QuickRSS: Image download
+-- QuickRSS: Images
+-- Images are embedded exactly as published.  Only formats the reader can
+-- render are kept, recognised by their first bytes rather than by what the
+-- server claims; anything else (AVIF, HEIC, an HTML error page…) is dropped.
 --
 -- Public API:
---   Images.download(url)          → data, mime_type, or nil when the download failed or
---                                   the format is one the reader cannot render
---   Images.dataUri(data, mime)    → "data:<mime>;base64,<data>" for embedding in an article
---   Images.extension(mime)        → file extension for a supported mime type
+--   Images.download(url)       → data, mime_type, or nil
+--   Images.dataUri(data, mime) → "data:<mime>;base64,…" for embedding in an article
+--   Images.extension(mime)     → file extension for the cover file
 
+local Http   = require("modules/data/http")
 local logger = require("logger")
 local mime   = require("mime")
+local util   = require("util")
 
--- Formats crengine renders.  Anything else (HEIC, AVIF, HTML error pages…)
--- would show as a broken box, so it is dropped instead.
-local MIME_BY_EXT = {
-    jpg  = "image/jpeg",
-    jpeg = "image/jpeg",
-    png  = "image/png",
-    gif  = "image/gif",
-    webp = "image/webp",
-    svg  = "image/svg+xml",
-    bmp  = "image/bmp",
-}
-local SUPPORTED = {}
-for _, m in pairs(MIME_BY_EXT) do SUPPORTED[m] = true end
-
-local function decodeUrl(url)
-    return (url:gsub("&amp;", "&"):gsub("&lt;", "<"):gsub("&gt;", ">")
-               :gsub("&quot;", '"'):gsub("&apos;", "'"))
+local function sniff(data)
+    if data:sub(1, 3) == "\255\216\255" then return "image/jpeg" end
+    if data:sub(1, 8) == "\137PNG\r\n\26\n" then return "image/png" end
+    if data:sub(1, 4) == "GIF8" then return "image/gif" end
+    if data:sub(1, 4) == "RIFF" and data:sub(9, 12) == "WEBP" then return "image/webp" end
+    if data:sub(1, 2) == "BM" then return "image/bmp" end
+    if data:sub(1, 512):find("<svg", 1, true) then return "image/svg+xml" end
 end
-
--- Synchronous GET following up to three redirects, retrying transient
--- network errors twice.  Returns body, content_type or nil, err.
-local function fetch(url)
-    local https      = require("ssl.https")
-    local ltn12      = require("ltn12")
-    local socketutil = require("socketutil")
-
-    local MAX_RETRIES = 2
-    for attempt = 1, MAX_RETRIES + 1 do
-        local current_url = url
-        local sink, ok, code, headers
-        for _ = 1, 3 do
-            sink = {}
-            socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT)
-            ok, code, headers = https.request{ url = current_url, sink = ltn12.sink.table(sink) }
-            socketutil:reset_timeout()
-            if not ok then break end
-            if code == 301 or code == 302 or code == 303 or code == 307 or code == 308 then
-                local location = headers and headers["location"]
-                if not location or location == "" then
-                    return nil, "redirect without Location"
-                end
-                current_url = location
-            else
-                break
-            end
-        end
-        if ok then
-            if code ~= 200 then return nil, "HTTP " .. tostring(code) end
-            return table.concat(sink), headers and headers["content-type"] or ""
-        end
-        if attempt > MAX_RETRIES then return nil, tostring(code) end
-        logger.dbg("QuickRSS: image retry", attempt, "for:", url, code)
-    end
-end
-
-local function mimeType(url, content_type)
-    local declared = (content_type or ""):match("^%s*([^;%s]+)")
-    if declared and SUPPORTED[declared] then return declared end
-    local ext = url:match("%.(%a%a%a?%a?)%?") or url:match("%.(%a%a%a?%a?)$")
-    return ext and MIME_BY_EXT[ext:lower()]
-end
-
-local EXT_BY_MIME = {}
-for ext, m in pairs(MIME_BY_EXT) do EXT_BY_MIME[m] = ext end
-EXT_BY_MIME["image/jpeg"] = "jpg"
 
 local Images = {}
 
 function Images.download(url)
-    url = decodeUrl(url)
-    local data, content_type = fetch(url)
+    url = util.htmlEntitiesToUtf8(url)
+    local data, err = Http.get(url)
     if not data then
-        logger.warn("QuickRSS: image download failed:", url, content_type)
+        logger.warn("QuickRSS: image download failed:", url, err)
         return nil
     end
-    local mime_type = mimeType(url, content_type)
+    local mime_type = sniff(data)
     if not mime_type then
-        logger.warn("QuickRSS: unsupported image type:", url, content_type)
+        logger.warn("QuickRSS: image format not supported:", url)
         return nil
     end
     return data, mime_type
@@ -97,7 +44,7 @@ function Images.dataUri(data, mime_type)
 end
 
 function Images.extension(mime_type)
-    return EXT_BY_MIME[mime_type]
+    return ({ ["image/jpeg"] = "jpg", ["image/svg+xml"] = "svg" })[mime_type] or mime_type:match("/(%w+)")
 end
 
 return Images

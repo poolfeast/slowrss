@@ -1,4 +1,12 @@
 local H      = require("helpers")
+-- RSS with HTML-escaped content and a comment, as many generators emit
+local ESCAPED = [==[<?xml version="1.0"?>
+<!-- generator comment -->
+<rss version="2.0"><channel><title>T</title>
+<item><title>It&amp;#8217;s here</title><link>https://e.example/1</link>
+<description>&lt;p&gt;Body &amp;amp; more&lt;/p&gt;&lt;img src="https://e.example/a.jpg"&gt;</description>
+<enclosure url="https://e.example/cover.jpg" type="image/jpeg" length="1"/></item>
+</channel></rss>]==]
 local Parser = require("modules/data/parser")
 
 local RSS = [==[<?xml version="1.0" encoding="UTF-8"?>
@@ -37,15 +45,17 @@ local ATOM = [==[<?xml version="1.0" encoding="utf-8"?>
     <category term="Technik"/>
     <category term="Politik"/>
     <summary>Kurz</summary>
-    <content type="html">&lt;p&gt;Lang&lt;/p&gt;</content>
+    <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Lang &amp; breit</p><img src="https://img.example/x.png"/></div></content>
   </entry>
 </feed>]==]
 
 return {
     rss_metadata = function()
-        local result = assert(Parser.parse(RSS))
-        local a, b = result.articles[1], result.articles[2]
+        local articles = assert(Parser.parse(RSS))
+        local a, b = articles[1], articles[2]
         H.eq(a.title, "Bridges & Tunnels")
+        H.eq(a.link, "https://blog.example/bridges")
+        H.eq(a.date, "Mon, 02 Mar 2026 10:00:00 +0000")
         H.eq(a.author, "Jane Doe")
         H.eq(table.concat(a.categories, ","), "Infrastructure,Civil engineering")
         H.eq(a.summary, "A short summary & more.")
@@ -57,14 +67,23 @@ return {
         H.eq(b.summary, "", "description is the content when there is no content:encoded")
         H.eq(b.content, "Just this")
     end,
+    escaped_rss = function()
+        local a = assert(Parser.parse(ESCAPED))[1]
+        H.eq(a.title, "It\u{2019}s here", "double-escaped entity in title")
+        H.eq(a.content, '<p>Body &amp; more</p><img src="https://e.example/a.jpg">')
+        H.eq(a.image_url, "https://e.example/cover.jpg", "enclosure preferred")
+    end,
+    not_a_feed = function()
+        H.eq(Parser.parse("<html><body>nope</body></html>"), nil)
+    end,
     atom_metadata = function()
-        local result = assert(Parser.parse(ATOM))
-        local a = result.articles[1]
+        local a = assert(Parser.parse(ATOM))[1]
         H.eq(a.link, "https://atom.example/hallo")
         H.eq(a.author, "Max Muster")
         H.eq(table.concat(a.categories, ","), "Technik,Politik")
         H.eq(a.summary, "Kurz")
         H.eq(a.language, "de")
-        H.contains(a.content, "Lang")
+        H.contains(a.content, "<p>Lang &amp; breit</p>", "inline XHTML kept as markup")
+        H.eq(a.image_url, "https://img.example/x.png")
     end,
 }
