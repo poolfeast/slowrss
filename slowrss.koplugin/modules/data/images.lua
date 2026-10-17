@@ -1,4 +1,4 @@
--- QuickRSS: Images
+-- SlowRSS: Images
 -- Images are embedded exactly as published.  Only formats the reader can
 -- render are kept, recognised by their first bytes rather than by what the
 -- server claims; anything else (AVIF, HEIC, an HTML error page…) is dropped.
@@ -28,12 +28,12 @@ function Images.download(url)
     url = util.htmlEntitiesToUtf8(url)
     local data, err = Http.get(url)
     if not data then
-        logger.warn("QuickRSS: image download failed:", url, err)
+        logger.warn("SlowRSS: image download failed:", url, err)
         return nil
     end
     local mime_type = sniff(data)
     if not mime_type then
-        logger.warn("QuickRSS: image format not supported:", url)
+        logger.warn("SlowRSS: image format not supported:", url)
         return nil
     end
     return data, mime_type

@@ -4,7 +4,7 @@
 -- (nix flake check does this.)
 local root = arg[0]:match("^(.*)/spec/run%.lua$")
 require("setupkoenv")
-package.path = root .. "/quickrss.koplugin/?.lua;" .. root .. "/spec/?.lua;" .. package.path
+package.path = root .. "/slowrss.koplugin/?.lua;" .. root .. "/spec/?.lua;" .. package.path
 require("logger"):setLevel(require("logger").levels.err)
 
 local specs = { "filter_spec", "dates_spec", "html_spec", "opml_spec", "parser_spec" }

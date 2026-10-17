@@ -1,4 +1,4 @@
--- QuickRSS: Feed parser
+-- SlowRSS: Feed parser
 -- Downloads RSS 2.0 and Atom feeds and turns them into a flat article list,
 -- using KOReader's XML lexer (luxl), as its OPDS plugin does.
 --

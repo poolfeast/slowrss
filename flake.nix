@@ -1,5 +1,5 @@
 {
-  description = "QuickRSS: RSS/Atom feeds as HTML articles for KOReader";
+  description = "SlowRSS: RSS/Atom feeds as HTML articles for KOReader";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
@@ -11,23 +11,23 @@
     in
     {
       packages = forAllSystems (pkgs: rec {
-        default = quickrss;
+        default = slowrss;
 
         # The plugin directory, ready to copy into KOReader's plugins folder.
-        quickrss = pkgs.stdenvNoCC.mkDerivation {
-          pname = "quickrss.koplugin";
+        slowrss = pkgs.stdenvNoCC.mkDerivation {
+          pname = "slowrss.koplugin";
           inherit version;
-          src = ./quickrss.koplugin;
+          src = ./slowrss.koplugin;
           installPhase = ''
             mkdir -p $out
-            cp -r . $out/quickrss.koplugin
+            cp -r . $out/slowrss.koplugin
           '';
         };
 
-        # Release archive: nix build .#zip && cp result quickrss.koplugin.zip
-        zip = pkgs.runCommand "quickrss.koplugin-${version}.zip" { nativeBuildInputs = [ pkgs.zip ]; } ''
-          cd ${quickrss}
-          zip -qr - quickrss.koplugin > $out
+        # Release archive: nix build .#zip && cp result slowrss.koplugin.zip
+        zip = pkgs.runCommand "slowrss.koplugin-${version}.zip" { nativeBuildInputs = [ pkgs.zip ]; } ''
+          cd ${slowrss}
+          zip -qr - slowrss.koplugin > $out
         '';
       });
 
@@ -37,12 +37,12 @@
         default = {
           type = "app";
           program = pkgs.lib.getExe (pkgs.writeShellApplication {
-            name = "quickrss-koreader";
+            name = "slowrss-koreader";
             runtimeInputs = [ pkgs.koreader pkgs.rsync ];
             text = ''
               export KO_HOME="''${KO_HOME:-''${XDG_CONFIG_HOME:-$HOME/.config}/koreader}"
               mkdir -p "$KO_HOME/plugins"
-              rsync -a --delete "${self}/quickrss.koplugin/" "$KO_HOME/plugins/quickrss.koplugin/"
+              rsync -a --delete "${self}/slowrss.koplugin/" "$KO_HOME/plugins/slowrss.koplugin/"
               exec koreader "$@"
             '';
           });
@@ -53,10 +53,10 @@
         smoke = {
           type = "app";
           program = pkgs.lib.getExe (pkgs.writeShellApplication {
-            name = "quickrss-smoke";
+            name = "slowrss-smoke";
             runtimeInputs = [ pkgs.koreader pkgs.curl pkgs.python3 ];
             text = ''
-              export QUICKRSS_SRC="${self}/quickrss.koplugin"
+              export SLOWRSS_SRC="${self}/slowrss.koplugin"
             '' + builtins.readFile ./spec/smoke.sh;
           });
           meta.description = "Headless fetch and open against live feeds";
@@ -64,12 +64,12 @@
       });
 
       checks = forAllSystems (pkgs: {
-        luacheck = pkgs.runCommand "quickrss-luacheck" { nativeBuildInputs = [ pkgs.luajitPackages.luacheck ]; } ''
+        luacheck = pkgs.runCommand "slowrss-luacheck" { nativeBuildInputs = [ pkgs.luajitPackages.luacheck ]; } ''
           cd ${self}
-          luacheck quickrss.koplugin spec
+          luacheck slowrss.koplugin spec
           touch $out
         '';
-        spec = pkgs.runCommand "quickrss-spec" { } ''
+        spec = pkgs.runCommand "slowrss-spec" { } ''
           cd ${pkgs.koreader}/lib/koreader
           ./luajit ${self}/spec/run.lua
           touch $out

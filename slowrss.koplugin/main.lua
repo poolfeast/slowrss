@@ -1,5 +1,5 @@
--- QuickRSS: plugin entry point
--- Adds Tools → QuickRSS.  Fetching turns every configured feed into
+-- SlowRSS: plugin entry point
+-- Adds Tools → SlowRSS.  Fetching turns every configured feed into
 -- self-contained HTML files under the articles folder, one sub-folder per
 -- OPML folder and feed, which are read like any other document.
 
@@ -18,18 +18,18 @@ local util             = require("util")
 local T                = require("ffi/util").template
 local _                = require("gettext")
 
-local QuickRSS = WidgetContainer:extend{
-    name = "quickrss",
+local SlowRSS = WidgetContainer:extend{
+    name = "slowrss",
     is_doc_only = false,
 }
 
-function QuickRSS:init()
+function SlowRSS:init()
     self.ui.menu:registerToMainMenu(self)
 end
 
-function QuickRSS:addToMainMenu(menu_items)
-    menu_items.quickrss = {
-        text = _("QuickRSS"),
+function SlowRSS:addToMainMenu(menu_items)
+    menu_items.slowrss = {
+        text = _("SlowRSS"),
         sorting_hint = "tools",
         sub_item_table = {
             {
@@ -69,7 +69,7 @@ local function normaliseFolder(s)
     return table.concat(segments, "/")
 end
 
-function QuickRSS:feedItems()
+function SlowRSS:feedItems()
     local items = {
         {
             text = _("Add feed"),
@@ -94,7 +94,7 @@ end
 
 -- Add (index = nil) or edit the feed at index; the OPML file is rewritten on
 -- save or delete.
-function QuickRSS:editFeed(index, touchmenu_instance)
+function SlowRSS:editFeed(index, touchmenu_instance)
     local feeds = Config.getFeeds()
     local feed = feeds[index] or { name = "", url = "", folder = "", include = "", exclude = "" }
     local function done()
@@ -167,7 +167,7 @@ local function updateSetting(key, value)
     Config.saveSettings(s)
 end
 
-function QuickRSS:settingsItems()
+function SlowRSS:settingsItems()
     return {
         {
             text_func = function()
@@ -220,7 +220,7 @@ end
 
 -- ── Fetch ────────────────────────────────────────────────────────────────────
 
-function QuickRSS:fetch()
+function SlowRSS:fetch()
     NetworkMgr:runWhenOnline(function()
         Trapper:wrap(function() self:_runFetch() end)
     end)
@@ -228,12 +228,12 @@ end
 
 -- Runs inside Trapper:wrap, so Trapper:info() shows progress and lets the
 -- user abort by tapping the message.
-function QuickRSS:_runFetch()
+function SlowRSS:_runFetch()
     local result = require("modules/data/fetcher").run(function(message)
         return Trapper:info(message)
     end)
     Trapper:reset()
-    logger.info("QuickRSS: fetch finished:", result.new, "new,", result.removed, "removed,", #result.errors, "errors")
+    logger.info("SlowRSS: fetch finished:", result.new, "new,", result.removed, "removed,", #result.errors, "errors")
     if FileManager.instance then
         FileManager.instance:onRefresh()
     end
@@ -254,7 +254,7 @@ function QuickRSS:_runFetch()
     })
 end
 
-function QuickRSS:openArticlesFolder()
+function SlowRSS:openArticlesFolder()
     local dir = Config.getSettings().articles_dir
     util.makePath(dir)
     if self.ui.document then
@@ -267,4 +267,4 @@ function QuickRSS:openArticlesFolder()
     end
 end
 
-return QuickRSS
+return SlowRSS

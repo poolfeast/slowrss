@@ -1,4 +1,4 @@
--- QuickRSS: Date helpers
+-- SlowRSS: Date helpers
 -- Pure Lua (no KOReader dependencies).  Feeds publish dates as RFC 822
 -- (RSS pubDate) or ISO-8601 (Atom published/updated); everything here
 -- accepts either.

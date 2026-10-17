@@ -1,4 +1,4 @@
--- QuickRSS: Article files
+-- SlowRSS: Article files
 -- Each article is a self-contained HTML file in
 --   <articles folder>/<OPML folder>/<feed name>/<title>.html
 --
@@ -123,7 +123,7 @@ end
 function ArticleDoc.remove(path)
     local ReaderUI = require("apps/reader/readerui")
     if ReaderUI.instance and ReaderUI.instance.document.file == path then
-        logger.info("QuickRSS: not removing the article currently open:", path)
+        logger.info("SlowRSS: not removing the article currently open:", path)
         return
     end
     require("apps/filemanager/filemanager"):deleteFile(path, true)

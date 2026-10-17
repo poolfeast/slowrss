@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <opml version="1.0">
-  <head><title>QuickRSS Feeds</title></head>
+  <head><title>SlowRSS Feeds</title></head>
   <body>
     <outline text="Ars Technica" title="Ars Technica" type="rss" xmlUrl="https://feeds.arstechnica.com/arstechnica/index"/>
     <outline text="Making" title="Making">

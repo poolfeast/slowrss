@@ -1,4 +1,4 @@
--- QuickRSS: Title filter
+-- SlowRSS: Title filter
 --
 -- Public API:
 --   Filter.matches(title, include, exclude) → whether a title passes a feed's filter

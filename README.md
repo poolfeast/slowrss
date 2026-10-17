@@ -1,10 +1,12 @@
-![banner](assets/quickrss_banner.png)
+# SlowRSS
+
+A fork of [QuickRSS](https://github.com/qewer33/quickrss.koplugin) by qewer33, reworked to write articles as files read in KOReader's own reader.
 
 An RSS/Atom fetcher for [KOReader](https://github.com/koreader/koreader). It turns every article in your feeds into a self-contained HTML file in a folder on your device. You read them in KOReader's own reader, so fonts, gestures, menus, dictionary lookup, highlights and reading status all work exactly as they do for a book.
 
 ## Features
 
-- **One menu, one job.** Tools → QuickRSS → *Fetch articles* downloads all feeds and writes the new articles. A progress message shows what it's doing; tap it to abort.
+- **One menu, one job.** Tools → SlowRSS → *Fetch articles* downloads all feeds and writes the new articles. A progress message shows what it's doing; tap it to abort.
 - **Folders that follow your OPML.** Each feed gets its own folder, and OPML groups become parent folders: a feed in `<outline text="Tech">` lands in `Tech/<feed name>/`.
 - **History that fills up.** Feeds only publish their latest handful of items. Articles stay in the folder after they leave the feed, so a feed's folder grows up to *Articles per feed* over successive fetches; beyond that the oldest files are deleted.
 - **Title filters.** Per feed, keep or skip articles by keywords in the title (set in the OPML file, see below).
@@ -16,7 +18,7 @@ An RSS/Atom fetcher for [KOReader](https://github.com/koreader/koreader). It tur
 
 ## Installation
 
-Copy `quickrss.koplugin/` into your KOReader plugins folder and restart KOReader:
+Copy `slowrss.koplugin/` into your KOReader plugins folder and restart KOReader:
 
 | Platform | Path |
 |---|---|
@@ -29,30 +31,30 @@ With Nix: `nix build github:poolfeast/slowrss` gives you the plugin directory un
 
 ## Usage
 
-1. **Add feeds**: Tools → QuickRSS → *Feeds* → *Add feed*. Name, URL, an optional folder such as `Tech/News`, and optional title filters. Tap a feed to edit or delete it. Or drop an OPML file at `koreader/quickrss/feeds.opml` (see below).
-2. **Fetch**: Tools → QuickRSS → *Fetch articles*. When it finishes you get a summary with an *Open folder* button.
-3. **Read**: open the articles folder in the file browser (Tools → QuickRSS → *Go to articles folder*). Files are named after the article title; a recurring title gets its date appended. Each file's date is the article's publish date, so sort by date to read newest first.
+1. **Add feeds**: Tools → SlowRSS → *Feeds* → *Add feed*. Name, URL, an optional folder such as `Tech/News`, and optional title filters. Tap a feed to edit or delete it. Or drop an OPML file at `koreader/slowrss/feeds.opml` (see below).
+2. **Fetch**: Tools → SlowRSS → *Fetch articles*. When it finishes you get a summary with an *Open folder* button.
+3. **Read**: open the articles folder in the file browser (Tools → SlowRSS → *Go to articles folder*). Files are named after the article title; a recurring title gets its date appended. Each file's date is the article's publish date, so sort by date to read newest first.
 
-Deleting a file in the file browser tells QuickRSS you are done with that article; it will not be re-created on the next fetch. The exceptions: if you delete the newest article in a folder while it is still in the feed, or empty the folder, the next fetch writes them again.
+Deleting a file in the file browser tells SlowRSS you are done with that article; it will not be re-created on the next fetch. The exceptions: if you delete the newest article in a folder while it is still in the feed, or empty the folder, the next fetch writes them again.
 
 ### Settings
 
-Tools → QuickRSS → *Settings*:
+Tools → SlowRSS → *Settings*:
 
 | Setting | Default | Description |
 |---|---|---|
 | Articles per feed | 20 | Maximum articles kept in each feed folder. The folder fills up to this number over successive fetches; older files are deleted beyond it. |
 | Embed images | On | Embed images and covers. Images are kept at their original size, so image-heavy posts can be several MB; turn this off for much smaller files. |
-| Articles folder | `koreader/quickrss/articles` | Where article files are written. Existing files stay where they are. |
+| Articles folder | `koreader/slowrss/articles` | Where article files are written. Existing files stay where they are. |
 
 ## OPML
 
-Feeds are stored as a standard OPML file at `koreader/quickrss/feeds.opml`. Edit it in a text editor or replace it with an export from another reader (Feedly, NewsBlur, Miniflux, …). Nested outlines are folders:
+Feeds are stored as a standard OPML file at `koreader/slowrss/feeds.opml`. Edit it in a text editor or replace it with an export from another reader (Feedly, NewsBlur, Miniflux, …). Nested outlines are folders:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <opml version="1.0">
-  <head><title>QuickRSS Feeds</title></head>
+  <head><title>SlowRSS Feeds</title></head>
   <body>
     <outline text="Ars Technica" type="rss" xmlUrl="https://feeds.arstechnica.com/arstechnica/index"/>
     <outline text="Making">
@@ -77,11 +79,11 @@ Changes made on the device are written back to the same file.
 
 ### Title filters
 
-Set them in the feed's edit dialog on the device, or add `quickrssInclude` and/or `quickrssExclude` to a feed's outline. Each is a `|`-separated list of keywords, matched case-insensitively anywhere in the title. With `quickrssInclude`, only titles containing at least one keyword are kept; `quickrssExclude` drops titles containing any keyword. Other RSS readers ignore these attributes.
+Set them in the feed's edit dialog on the device, or add `slowrssInclude` and/or `slowrssExclude` to a feed's outline. Each is a `|`-separated list of keywords, matched case-insensitively anywhere in the title. With `slowrssInclude`, only titles containing at least one keyword are kept; `slowrssExclude` drops titles containing any keyword. Other RSS readers ignore these attributes.
 
 ```xml
 <outline text="Ars Technica" type="rss" xmlUrl="https://feeds.arstechnica.com/arstechnica/index"
-         quickrssInclude="space|nasa|rocket" quickrssExclude="deals|sponsored"/>
+         slowrssInclude="space|nasa|rocket" slowrssExclude="deals|sponsored"/>
 ```
 
 ## Development
@@ -100,7 +102,7 @@ nix develop             # shell with koreader and luacheck
 
 ## Data storage
 
-Everything lives in `quickrss/` inside the KOReader data directory (`~/.config/koreader/` on Linux, `koreader/` on devices):
+Everything lives in `slowrss/` inside the KOReader data directory (`~/.config/koreader/` on Linux, `koreader/` on devices):
 
 | File / Directory | Contents |
 |---|---|
@@ -111,7 +113,7 @@ Everything lives in `quickrss/` inside the KOReader data directory (`~/.config/k
 ## Project structure
 
 ```
-quickrss.koplugin/
+slowrss.koplugin/
 ├── main.lua                  Tools menu: fetch, feeds, settings, go-to-folder
 ├── _meta.lua                 Plugin metadata
 └── modules/data/

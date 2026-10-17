@@ -1,4 +1,4 @@
--- QuickRSS: HTTP
+-- SlowRSS: HTTP
 --
 -- Public API:
 --   Http.get(url) → body, or nil, err
@@ -39,7 +39,7 @@ function Http.get(url)
             return table.concat(sink)
         end
         if attempt > MAX_RETRIES then return nil, tostring(code) end
-        logger.dbg("QuickRSS: image retry", attempt, "for:", url, code)
+        logger.dbg("SlowRSS: image retry", attempt, "for:", url, code)
     end
 end
 

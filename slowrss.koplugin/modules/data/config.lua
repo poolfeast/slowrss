@@ -1,5 +1,5 @@
--- QuickRSS: Config Module
--- Persists the feed list and settings under <koreader data dir>/quickrss/.
+-- SlowRSS: Config Module
+-- Persists the feed list and settings under <koreader data dir>/slowrss/.
 --
 -- The feed list is a standard OPML file (feeds.opml) so it can be edited on a
 -- computer or imported from another RSS reader.  Everything else lives in
@@ -16,7 +16,7 @@ local LuaSettings = require("luasettings")
 local OPML        = require("modules/data/opml")
 local util        = require("util")
 
-local BASE_DIR = DataStorage:getFullDataDir() .. "/quickrss"
+local BASE_DIR = DataStorage:getFullDataDir() .. "/slowrss"
 util.makePath(BASE_DIR)
 local OPML_FILE = BASE_DIR .. "/feeds.opml"
 

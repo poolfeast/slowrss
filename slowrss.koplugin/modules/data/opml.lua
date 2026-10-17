@@ -1,4 +1,4 @@
--- QuickRSS: OPML Module
+-- SlowRSS: OPML Module
 -- Pure Lua (no KOReader dependencies).  Reads and writes the standard OPML
 -- feed-list format so subscriptions can be managed from a computer or
 -- imported from another RSS reader.  Nested <outline> groups are folders:
@@ -6,7 +6,7 @@
 -- are written to a "Tech/<feed name>" directory.
 --
 -- Feeds may carry a title filter as extra attributes, which other readers
--- ignore:  quickrssInclude="space|nasa"  quickrssExclude="deals|sponsored"
+-- ignore:  slowrssInclude="space|nasa"  slowrssExclude="deals|sponsored"
 --
 -- Public API:
 --   OPML.parse(content)        → { {name, url, folder, include, exclude}, … }  missing values are ""
@@ -54,8 +54,8 @@ function OPML.parse(content)
                     name    = name,
                     url     = url,
                     folder  = table.concat(stack, "/"),
-                    include = getAttr(attrs, "quickrssInclude") or "",
-                    exclude = getAttr(attrs, "quickrssExclude") or "",
+                    include = getAttr(attrs, "slowrssInclude") or "",
+                    exclude = getAttr(attrs, "slowrssExclude") or "",
                 })
             end
             if not self_closing then
@@ -87,14 +87,14 @@ function OPML.serialize(feeds)
     local lines = {
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<opml version="1.0">',
-        "  <head><title>QuickRSS Feeds</title></head>",
+        "  <head><title>SlowRSS Feeds</title></head>",
         "  <body>",
     }
     local function emit(node, indent)
         for _, feed in ipairs(node.feeds) do
             local filter = ""
-            if feed.include ~= "" then filter = filter .. string.format(' quickrssInclude="%s"', escAttr(feed.include)) end
-            if feed.exclude ~= "" then filter = filter .. string.format(' quickrssExclude="%s"', escAttr(feed.exclude)) end
+            if feed.include ~= "" then filter = filter .. string.format(' slowrssInclude="%s"', escAttr(feed.include)) end
+            if feed.exclude ~= "" then filter = filter .. string.format(' slowrssExclude="%s"', escAttr(feed.exclude)) end
             table.insert(lines, string.format('%s<outline text="%s" title="%s" type="rss" xmlUrl="%s"%s/>',
                 indent, escAttr(feed.name), escAttr(feed.name), escAttr(feed.url), filter))
         end

@@ -1,4 +1,4 @@
--- QuickRSS: Article HTML builder
+-- SlowRSS: Article HTML builder
 -- Pure Lua (no KOReader dependencies).  Produces the self-contained HTML file
 -- that KOReader opens for an article: a header with title, source and date,
 -- then the body with images embedded as data: URIs and links made absolute.

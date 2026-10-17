@@ -11,15 +11,15 @@
 #
 # Requires: koreader, curl, python3 on PATH (the dev shell has them).
 
-QUICKRSS_SRC="${QUICKRSS_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/quickrss.koplugin}"
-KO_HOME="${KO_HOME:-$(mktemp -d -t quickrss-smoke.XXXXXX)}"
+SLOWRSS_SRC="${SLOWRSS_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/slowrss.koplugin}"
+KO_HOME="${KO_HOME:-$(mktemp -d -t slowrss-smoke.XXXXXX)}"
 PORT="${SMOKE_PORT:-8181}"
 API="http://localhost:${PORT}/koreader"
 export KO_HOME
 
-mkdir -p "$KO_HOME/plugins" "$KO_HOME/quickrss"
-rm -rf "$KO_HOME/plugins/quickrss.koplugin"
-cp -r "$QUICKRSS_SRC" "$KO_HOME/plugins/quickrss.koplugin"
+mkdir -p "$KO_HOME/plugins" "$KO_HOME/slowrss"
+rm -rf "$KO_HOME/plugins/slowrss.koplugin"
+cp -r "$SLOWRSS_SRC" "$KO_HOME/plugins/slowrss.koplugin"
 
 cat > "$KO_HOME/settings.reader.lua" <<SETTINGS
 return {
@@ -30,12 +30,12 @@ return {
 SETTINGS
 
 if [ -n "${SMOKE_OPML:-}" ]; then
-    cp "$SMOKE_OPML" "$KO_HOME/quickrss/feeds.opml"
+    cp "$SMOKE_OPML" "$KO_HOME/slowrss/feeds.opml"
 else
-    cat > "$KO_HOME/quickrss/feeds.opml" <<'OPML'
+    cat > "$KO_HOME/slowrss/feeds.opml" <<'OPML'
 <?xml version="1.0" encoding="UTF-8"?>
 <opml version="1.0">
-  <head><title>QuickRSS Feeds</title></head>
+  <head><title>SlowRSS Feeds</title></head>
   <body>
     <outline text="Ars Technica" type="rss" xmlUrl="https://feeds.arstechnica.com/arstechnica/index"/>
     <outline text="Newsletters">
@@ -46,11 +46,11 @@ else
 OPML
 fi
 
-cat > "$KO_HOME/quickrss/settings.lua" <<SETTINGS
+cat > "$KO_HOME/slowrss/settings.lua" <<SETTINGS
 return {
     ["article_settings"] = {
         ["items_per_feed"] = ${SMOKE_ITEMS:-3},
-        ["articles_dir"] = "${KO_HOME}/quickrss/articles",
+        ["articles_dir"] = "${KO_HOME}/slowrss/articles",
     },
 }
 SETTINGS
@@ -73,19 +73,19 @@ wait_for() { # wait_for <seconds> <command...>: poll until the command succeeds
     done
 }
 inspector_up() { curl -sf --max-time 2 "$API/" > /dev/null; }
-fetch_done()   { grep -q "QuickRSS: fetch finished" "$log"; }
+fetch_done()   { grep -q "SlowRSS: fetch finished" "$log"; }
 shot()         { curl -s --max-time 10 "$API/device/screen/bb" -o "$1"; echo "screenshot: $1"; }
 
 wait_for 60 inspector_up || { echo "HTTP inspector did not come up"; exit 1; }
 echo "KOReader up, fetching…"
 start=$(date +%s)
-curl -sf --max-time 5 "$API/ui/quickrss/fetch/" > /dev/null
+curl -sf --max-time 5 "$API/ui/slowrss/fetch/" > /dev/null
 wait_for "${SMOKE_FETCH_TIMEOUT:-600}" fetch_done || { echo "fetch did not finish"; shot "$KO_HOME/smoke-stuck.png"; exit 1; }
 sleep 1
 echo "fetch finished in $(( $(date +%s) - start ))s"
 shot "$KO_HOME/smoke-result.png"
 
-articles_dir="$KO_HOME/quickrss/articles"
+articles_dir="$KO_HOME/slowrss/articles"
 echo "articles written:"
 (cd "$articles_dir" && find . -name '*.html' | sort | sed 's/^/  /')
 [ "$(find "$articles_dir" -name '*.html' | wc -l)" -gt 0 ] || { echo "no articles written"; exit 1; }
@@ -107,7 +107,7 @@ curl -sf --max-time 5 "$API/event/GotoViewRel/1" > /dev/null; sleep 1
 shot "$KO_HOME/smoke-article-p2.png"
 
 echo "log warnings/errors (if any):"
-grep -aiE "quickrss|traceback|error" "$log" | grep -viE "QuickRSS (fetching|fetch OK|parsed feed|full-text fetch)" | sed 's/^/  /' | tail -30 || true
+grep -aiE "slowrss|traceback|error" "$log" | grep -viE "SlowRSS (fetching|fetch OK|parsed feed|full-text fetch)" | sed 's/^/  /' | tail -30 || true
 
 stop_koreader
 wait "$ko_pid" 2>/dev/null || true

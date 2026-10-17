@@ -1,4 +1,4 @@
--- QuickRSS: Fetch orchestration
+-- SlowRSS: Fetch orchestration
 -- Keeps no index: the article files are the state.
 --
 --   * A file is named after the article's title and records the article's

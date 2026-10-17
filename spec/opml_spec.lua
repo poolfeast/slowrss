@@ -5,7 +5,7 @@ local NESTED = [[<?xml version="1.0"?>
 <opml version="2.0"><head><title>x</title></head><body>
   <outline text="Top" type="rss" xmlUrl="https://top.example/feed"/>
   <outline text="Tech" title="Tech">
-    <outline title="Ars &amp; Co" type="rss" xmlUrl="https://ars.example/rss?a=1&amp;b=2" htmlUrl="https://ars.example" quickrssInclude="space|nasa" quickrssExclude="deals"/>
+    <outline title="Ars &amp; Co" type="rss" xmlUrl="https://ars.example/rss?a=1&amp;b=2" htmlUrl="https://ars.example" slowrssInclude="space|nasa" slowrssExclude="deals"/>
     <outline text="Deep">
       <outline text="Nested" type="rss" xmlUrl="https://deep.example/feed" />
     </outline>
@@ -43,7 +43,7 @@ return {
             { name = "A", url = "https://a/", folder = "", include = "x", exclude = "" },
             { name = "B", url = "https://b/", folder = "F/G", include = "", exclude = "" },
         })
-        H.contains(xml, '    <outline text="A" title="A" type="rss" xmlUrl="https://a/" quickrssInclude="x"/>')
+        H.contains(xml, '    <outline text="A" title="A" type="rss" xmlUrl="https://a/" slowrssInclude="x"/>')
         H.contains(xml, '    <outline text="F" title="F">\n      <outline text="G" title="G">\n        <outline text="B" title="B" type="rss" xmlUrl="https://b/"/>\n      </outline>\n    </outline>')
     end,
 }
