@@ -25,7 +25,7 @@ Copy `quickrss.koplugin/` into your KOReader plugins folder and restart KOReader
 | Kobo | `.adds/koreader/plugins/` |
 | PocketBook | `applications/koreader/plugins/` |
 
-With Nix: `nix build github:poolfeast/slowreader` gives you the plugin directory under `result/`, and `nix build .#zip` builds the release archive.
+With Nix: `nix build github:poolfeast/slowrss` gives you the plugin directory under `result/`, and `nix build .#zip` builds the release archive.
 
 ## Usage
 
