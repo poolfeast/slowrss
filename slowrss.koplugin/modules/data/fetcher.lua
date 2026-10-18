@@ -14,7 +14,8 @@
 --
 -- Public API:
 --   Fetcher.run(progress) → stats { new, errors, aborted }
---     progress(message) → false when the user aborted
+--     progress(message, fraction) → false when the user aborted;
+--     fraction is the overall progress, 0 to 1
 
 local ArticleDoc = require("modules/data/article_doc")
 local Config     = require("modules/data/config")
@@ -63,8 +64,9 @@ function Fetcher.run(progress)
     local stats    = { new = 0, errors = {}, aborted = false }
 
     for i, feed in ipairs(feeds) do
+        local done = (i - 1) / #feeds -- progress at the start of this feed
         local heading = string.format("Fetching %s…\n(%d of %d)", feed.name, i, #feeds)
-        if not progress(heading) then
+        if not progress(heading, done) then
             stats.aborted = true
             return stats
         end
@@ -75,16 +77,18 @@ function Fetcher.run(progress)
             local dir = ArticleDoc.feedDir(settings.articles_dir, feed)
             local limit = feed.limit or settings.items_per_feed
             local older, aborted = Substack.olderArticles(feed, articles, limit, function(line)
-                return progress(heading .. "\n\n" .. line)
+                return progress(heading .. "\n\n" .. line, done)
             end)
             if aborted then
                 stats.aborted = true
                 return stats
             end
             for _, art in ipairs(older) do table.insert(articles, art) end
-            for _, item in ipairs(selectNew(articles, feed, dir, limit)) do
+            local todo = selectNew(articles, feed, dir, limit)
+            for k, item in ipairs(todo) do
+                local fraction = done + (k - 1) / #todo / #feeds
                 heading = string.format("%s\n(%s)", item.article.title, feed.name)
-                if not progress(heading) then
+                if not progress(heading, fraction) then
                     stats.aborted = true
                     return stats
                 end
@@ -94,7 +98,7 @@ function Fetcher.run(progress)
                 end
                 if ok then
                     ok, write_err = ArticleDoc.write(item.article, item.path, item.ts, function(line)
-                        return progress(heading .. "\n\n" .. line)
+                        return progress(heading .. "\n\n" .. line, fraction)
                     end)
                 end
                 if write_err == "aborted" then

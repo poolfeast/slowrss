@@ -3,13 +3,17 @@
 -- self-contained HTML files under the articles folder, one sub-folder per
 -- OPML folder and feed, which are read like any other document.
 
+local Blitbuffer       = require("ffi/blitbuffer")
 local Config           = require("modules/data/config")
 local ConfirmBox       = require("ui/widget/confirmbox")
+local Device           = require("device")
 local InputDialog      = require("ui/widget/inputdialog")
 local FileManager      = require("apps/filemanager/filemanager")
 local MultiInputDialog = require("ui/widget/multiinputdialog")
 local NetworkMgr       = require("ui/network/manager")
 local PathChooser      = require("ui/widget/pathchooser")
+local ProgressWidget   = require("ui/widget/progresswidget")
+local Size             = require("ui/size")
 local SpinWidget       = require("ui/widget/spinwidget")
 local Trapper          = require("ui/trapper")
 local UIManager        = require("ui/uimanager")
@@ -18,6 +22,8 @@ local logger           = require("logger")
 local util             = require("util")
 local T                = require("ffi/util").template
 local _                = require("gettext")
+
+local Screen = Device.screen
 
 local SlowRSS = WidgetContainer:extend{
     name = "slowrss",
@@ -300,10 +306,25 @@ function SlowRSS:fetch()
 end
 
 -- Runs inside Trapper:wrap, so Trapper:info() shows progress and lets the
--- user abort by tapping the message.
+-- user abort by tapping the message.  Overall progress is the same thin bar
+-- the reader shows while a document loads, painted straight to the screen
+-- because UIManager does not get to run during the fetch.
 function SlowRSS:_runFetch()
-    local result = require("modules/data/fetcher").run(function(message)
-        return Trapper:info(message)
+    local bar = ProgressWidget:new{
+        width = math.floor(Screen:getWidth() / 3),
+        height = Size.line.progress,
+        fillcolor = Blitbuffer.COLOR_BLACK,
+        percentage = 0,
+        margin_h = 0,
+        margin_v = 0,
+        radius = 0,
+    }
+    local result = require("modules/data/fetcher").run(function(message, fraction)
+        local go_on = Trapper:info(message)
+        bar:setPercentage(fraction)
+        bar:paintTo(Screen.bb, 0, Size.margin.small)
+        Screen:refreshFast(0, Size.margin.small, bar.width, bar.height)
+        return go_on
     end)
     Trapper:reset()
     logger.info("SlowRSS: fetch finished:", result.new, "new,", #result.errors, "errors")
