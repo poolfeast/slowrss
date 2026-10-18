@@ -77,7 +77,14 @@ fetch_done()   { grep -q "SlowRSS: fetch finished" "$log"; }
 shot()         { curl -s --max-time 10 "$API/device/screen/bb" -o "$1"; echo "screenshot: $1"; }
 
 wait_for 60 inspector_up || { echo "HTTP inspector did not come up"; exit 1; }
-echo "KOReader up, fetching…"
+echo "KOReader up, checking menus…"
+check=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(chr(34) + sys.argv[1] + chr(34), safe=""))' "$(dirname "$SLOWRSS_SRC")/spec/menu_check.lua")
+menus=$(curl -s --max-time 10 "$API/globals/dofile/$check")
+case "$menus" in
+    *error*) echo "menu check failed: $menus"; exit 1 ;;
+    *) echo "menu labels: $menus" ;;
+esac
+echo "fetching…"
 start=$(date +%s)
 curl -sf --max-time 5 "$API/ui/slowrss/fetch/" > /dev/null
 wait_for "${SMOKE_FETCH_TIMEOUT:-600}" fetch_done || { echo "fetch did not finish"; shot "$KO_HOME/smoke-stuck.png"; exit 1; }

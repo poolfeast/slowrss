@@ -171,7 +171,7 @@ end
 function SlowRSS:feedSettingsItems(index)
     local function feed() return Config.getFeeds()[index] end
     local items = {}
-    for _, field in ipairs(FIELDS) do
+    for __, field in ipairs(FIELDS) do
         table.insert(items, {
             text_func = function()
                 local value = feed()[field.key]
