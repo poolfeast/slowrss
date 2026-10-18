@@ -100,9 +100,7 @@ function ArticleDoc.write(article, path, ts, progress)
     for i, url in ipairs(urls) do
         local data, mime_type = Images.download(url)
         downloads[url] = { data = data, mime = mime_type }
-        -- CDNs often nest the original address, escaped, inside theirs
-        local name = util.urlDecode(url):match("([^/?#]+)[?#]?[^/]*$") or url
-        if not progress(string.format("Image %d of %d: %s (%s)", i, #urls, name,
+        if not progress(string.format("Image %d of %d (%s)", i, #urls,
                 data and util.getFriendlySize(#data) or "not downloaded")) then
             return nil, "aborted"
         end
