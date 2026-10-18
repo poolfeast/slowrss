@@ -321,9 +321,11 @@ function SlowRSS:_runFetch()
     }
     local result = require("modules/data/fetcher").run(function(message, fraction)
         local go_on = Trapper:info(message)
-        bar:setPercentage(fraction)
-        bar:paintTo(Screen.bb, 0, Size.margin.small)
-        Screen:refreshFast(0, Size.margin.small, bar.width, bar.height)
+        if fraction then
+            bar:setPercentage(fraction)
+            bar:paintTo(Screen.bb, 0, Size.margin.small)
+            Screen:refreshFast(0, Size.margin.small, bar.width, bar.height)
+        end
         return go_on
     end)
     Trapper:reset()

@@ -14,8 +14,9 @@
 --
 -- Public API:
 --   Fetcher.run(progress) → stats { new, errors, aborted }
---     progress(message, fraction) → false when the user aborted;
---     fraction is the overall progress, 0 to 1
+--     progress(message, fraction) → false when the user aborted.
+--     fraction is articles done / articles to download, 0 to 1; nil while
+--     the feeds are still being read and that total is not yet known.
 
 local ArticleDoc = require("modules/data/article_doc")
 local Config     = require("modules/data/config")
@@ -63,10 +64,11 @@ function Fetcher.run(progress)
     local feeds    = Config.getFeeds()
     local stats    = { new = 0, errors = {}, aborted = false }
 
+    -- First pass: work out everything there is to download, across all feeds
+    local todo = {}
     for i, feed in ipairs(feeds) do
-        local done = (i - 1) / #feeds -- progress at the start of this feed
         local heading = string.format("Fetching %s…\n(%d of %d)", feed.name, i, #feeds)
-        if not progress(heading, done) then
+        if not progress(heading) then
             stats.aborted = true
             return stats
         end
@@ -77,40 +79,45 @@ function Fetcher.run(progress)
             local dir = ArticleDoc.feedDir(settings.articles_dir, feed)
             local limit = feed.limit or settings.items_per_feed
             local older, aborted = Substack.olderArticles(feed, articles, limit, function(line)
-                return progress(heading .. "\n\n" .. line, done)
+                return progress(heading .. "\n\n" .. line)
             end)
             if aborted then
                 stats.aborted = true
                 return stats
             end
             for _, art in ipairs(older) do table.insert(articles, art) end
-            local todo = selectNew(articles, feed, dir, limit)
-            for k, item in ipairs(todo) do
-                local fraction = done + (k - 1) / #todo / #feeds
-                heading = string.format("%s\n(%s)", item.article.title, feed.name)
-                if not progress(heading, fraction) then
-                    stats.aborted = true
-                    return stats
-                end
-                local ok, write_err = true, nil
-                if item.article.body_url then
-                    ok, write_err = Substack.fetchBody(item.article)
-                end
-                if ok then
-                    ok, write_err = ArticleDoc.write(item.article, item.path, item.ts, function(line)
-                        return progress(heading .. "\n\n" .. line, fraction)
-                    end)
-                end
-                if write_err == "aborted" then
-                    stats.aborted = true
-                    return stats
-                end
-                if ok then
-                    stats.new = stats.new + 1
-                else
-                    table.insert(stats.errors, item.article.title .. ": " .. tostring(write_err))
-                end
+            for _, item in ipairs(selectNew(articles, feed, dir, limit)) do
+                item.feed = feed
+                table.insert(todo, item)
             end
+        end
+    end
+
+    -- Second pass: download them, the progress bar counting articles
+    for k, item in ipairs(todo) do
+        local fraction = (k - 1) / #todo
+        local heading = string.format("%s\n(%s)\n%d of %d", item.article.title, item.feed.name, k, #todo)
+        if not progress(heading, fraction) then
+            stats.aborted = true
+            return stats
+        end
+        local ok, write_err = true, nil
+        if item.article.body_url then
+            ok, write_err = Substack.fetchBody(item.article)
+        end
+        if ok then
+            ok, write_err = ArticleDoc.write(item.article, item.path, item.ts, function(line)
+                return progress(heading .. "\n\n" .. line, fraction)
+            end)
+        end
+        if write_err == "aborted" then
+            stats.aborted = true
+            return stats
+        end
+        if ok then
+            stats.new = stats.new + 1
+        else
+            table.insert(stats.errors, item.article.title .. ": " .. tostring(write_err))
         end
     end
     return stats
