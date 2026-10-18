@@ -51,15 +51,13 @@ function Dates.iso(raw)
     return nil
 end
 
--- Short human-readable date for cards and the article header:
--- "Mon, 01 Jan 2024 00:00:00 +0000" → "01 Jan 2024", "2024-01-01T…" → "2024-01-01".
--- Anything unrecognised is returned as-is so the user still sees what the feed sent.
+-- Short human-readable date for the article header, the same whichever way
+-- the source wrote it: "21 Apr 2025".  Anything unrecognised is returned
+-- as-is so the user still sees what the feed sent.
 function Dates.display(raw)
     if not raw or raw == "" then return nil end
-    local d = raw:match("%a+,%s+(%d+%s+%a+%s+%d+)")
-    if d then return d end
-    d = raw:match("(%d%d%d%d%-%d%d%-%d%d)")
-    if d then return d end
+    local ts = Dates.parse(raw)
+    if ts then return os.date("%d %b %Y", ts) end
     return raw
 end
 

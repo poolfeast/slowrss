@@ -18,7 +18,8 @@ return {
     end,
     display = function()
         H.eq(Dates.display("Mon, 01 Mar 2026 12:00:00 +0000"), "01 Mar 2026")
-        H.eq(Dates.display("2026-03-01T12:00:00Z"), "2026-03-01")
+        H.eq(Dates.display("2026-03-01T12:00:00Z"), "01 Mar 2026", "same form as RSS dates")
+        H.eq(Dates.display("2025-04-21T10:00:00.000Z"), "21 Apr 2025")
         H.eq(Dates.display("odd"), "odd")
         H.eq(Dates.display(""), nil)
     end,

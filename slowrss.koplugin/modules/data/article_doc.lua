@@ -5,16 +5,17 @@
 -- Public API:
 --   ArticleDoc.feedDir(root, feed)        → directory for a feed's articles
 --   ArticleDoc.locate(article, dir)       → path, exists: where the article's file is or goes
---   ArticleDoc.write(article, path, ts)   → true, or nil, err; mtime set to ts when given.
+--   ArticleDoc.write(article, path, ts, progress)
+--                                         → true, or nil, err; mtime set to ts when given.
 --                                           Also writes the cover and metadata sidecar.
---   ArticleDoc.remove(path)               deletes the file with its sidecar and history entry
+--                                           progress(line) is called after each image download
+--                                           and returns false when the user aborts; err is then "aborted".
 
 local Config      = require("modules/data/config")
 local DocSettings = require("docsettings")
 local Html        = require("modules/data/html")
 local Images      = require("modules/data/images")
 local lfs         = require("libs/libkoreader-lfs")
-local logger      = require("logger")
 local util        = require("util")
 
 local ArticleDoc = {}
@@ -79,19 +80,38 @@ local function writeSidecar(article, path, cover, cover_mime)
     end
 end
 
-function ArticleDoc.write(article, path, ts)
+function ArticleDoc.write(article, path, ts, progress)
     local images = Config.getSettings().article_images_enabled
-    -- The lead image is both embedded and used as the cover; download it once.
+    -- First pass: find the images the article will embed.  The progress
+    -- message pauses this coroutine, which Lua cannot do inside the HTML
+    -- builder's gsub callbacks, so downloads happen between the two passes.
+    local urls, seen = {}, {}
+    Html.document(article, {
+        images = images,
+        embed  = function(url)
+            if not seen[url] then
+                seen[url] = true
+                table.insert(urls, url)
+            end
+            return "" -- stand-in so the first pass makes the same choices as the second
+        end,
+    })
     local downloads = {}
-    local function download(url)
-        if not downloads[url] then downloads[url] = { Images.download(url) } end
-        return downloads[url][1], downloads[url][2]
+    for i, url in ipairs(urls) do
+        local data, mime_type = Images.download(url)
+        downloads[url] = { data = data, mime = mime_type }
+        -- CDNs often nest the original address, escaped, inside theirs
+        local name = util.urlDecode(url):match("([^/?#]+)[?#]?[^/]*$") or url
+        if not progress(string.format("Image %d of %d: %s (%s)", i, #urls, name,
+                data and util.getFriendlySize(#data) or "not downloaded")) then
+            return nil, "aborted"
+        end
     end
     local html = Html.document(article, {
         images = images,
         embed  = function(url)
-            local data, mime_type = download(url)
-            return data and Images.dataUri(data, mime_type)
+            local d = downloads[url]
+            return d and d.data and Images.dataUri(d.data, d.mime)
         end,
     })
     local dir = path:match("^(.*)/")
@@ -109,24 +129,10 @@ function ArticleDoc.write(article, path, ts)
         return nil, rename_err
     end
     if ts then lfs.touch(path, ts, ts) end
-    local cover, cover_mime
-    if images and article.image_url then
-        cover, cover_mime = download(article.image_url)
-    end
-    writeSidecar(article, path, cover, cover_mime)
+    local lead = images and article.image_url and downloads[article.image_url]
+    writeSidecar(article, path, lead and lead.data, lead and lead.mime)
     return true
 end
 
--- Deleting through FileManager also removes the document's .sdr folder
--- (reading position, highlights, status) and its history entry, exactly as
--- deleting it in the file browser does.
-function ArticleDoc.remove(path)
-    local ReaderUI = require("apps/reader/readerui")
-    if ReaderUI.instance and ReaderUI.instance.document.file == path then
-        logger.info("SlowRSS: not removing the article currently open:", path)
-        return
-    end
-    require("apps/filemanager/filemanager"):deleteFile(path, true)
-end
 
 return ArticleDoc

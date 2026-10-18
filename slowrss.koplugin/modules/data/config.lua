@@ -21,7 +21,7 @@ util.makePath(BASE_DIR)
 local OPML_FILE = BASE_DIR .. "/feeds.opml"
 
 local DEFAULTS = {
-    items_per_feed         = 20,   -- articles kept in each feed's folder
+    items_per_feed         = 20,   -- newest articles each fetch looks at, per feed
     article_images_enabled = true, -- embed images in articles
     articles_dir           = BASE_DIR .. "/articles",
 }

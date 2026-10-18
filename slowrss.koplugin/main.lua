@@ -5,6 +5,7 @@
 
 local Config           = require("modules/data/config")
 local ConfirmBox       = require("ui/widget/confirmbox")
+local InputDialog      = require("ui/widget/inputdialog")
 local FileManager      = require("apps/filemanager/filemanager")
 local MultiInputDialog = require("ui/widget/multiinputdialog")
 local NetworkMgr       = require("ui/network/manager")
@@ -54,19 +55,62 @@ function SlowRSS:addToMainMenu(menu_items)
 end
 
 -- ── Feeds ────────────────────────────────────────────────────────────────────
-
-local function trim(s)
-    return s:match("^%s*(.-)%s*$")
-end
+-- Each feed is a submenu whose entries are edited one at a time, so every
+-- dialog is a single line that fits above the on-screen keyboard.
 
 -- " Tech / News/ " → "Tech/News"
 local function normaliseFolder(s)
     local segments = {}
     for segment in s:gmatch("[^/]+") do
-        segment = trim(segment)
+        segment = util.trim(segment)
         if segment ~= "" then table.insert(segments, segment) end
     end
     return table.concat(segments, "/")
+end
+
+local function editText(title, value, hint, callback)
+    local dialog
+    dialog = InputDialog:new{
+        title = title,
+        input = value,
+        input_hint = hint,
+        buttons = {{
+            {
+                text = _("Cancel"),
+                id = "close",
+                callback = function() UIManager:close(dialog) end,
+            },
+            {
+                text = _("Save"),
+                is_enter_default = true,
+                callback = function()
+                    local text = util.trim(dialog:getInputText())
+                    UIManager:close(dialog)
+                    callback(text)
+                end,
+            },
+        }},
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+local FIELDS = {
+    { key = "name",    label = _("Name"),                   required = true },
+    { key = "url",     label = _("URL"),                    required = true, hint = "https://feeds.example.com/rss" },
+    { key = "folder",  label = _("Folder"),                 hint = "Tech/News" },
+    { key = "include", label = _("Only titles containing"), hint = "space|nasa" },
+    { key = "exclude", label = _("Skip titles containing"), hint = "deals|sponsored" },
+}
+
+local function feedLabel(feed)
+    return feed.folder ~= "" and (feed.folder .. " › " .. feed.name) or feed.name
+end
+
+local function updateFeed(index, key, value)
+    local feeds = Config.getFeeds()
+    feeds[index][key] = value
+    Config.saveFeeds(feeds)
 end
 
 function SlowRSS:feedItems()
@@ -75,88 +119,117 @@ function SlowRSS:feedItems()
             text = _("Add feed"),
             keep_menu_open = true,
             callback = function(touchmenu_instance)
-                self:editFeed(nil, touchmenu_instance)
+                self:addFeed(touchmenu_instance)
             end,
             separator = true,
         },
     }
-    for i, feed in ipairs(Config.getFeeds()) do
+    for i in ipairs(Config.getFeeds()) do
         table.insert(items, {
-            text = feed.folder ~= "" and (feed.folder .. " › " .. feed.name) or feed.name,
-            keep_menu_open = true,
-            callback = function(touchmenu_instance)
-                self:editFeed(i, touchmenu_instance)
-            end,
+            text_func = function() return feedLabel(Config.getFeeds()[i]) end,
+            sub_item_table_func = function() return self:feedSettingsItems(i) end,
         })
     end
     return items
 end
 
--- Add (index = nil) or edit the feed at index; the OPML file is rewritten on
--- save or delete.
-function SlowRSS:editFeed(index, touchmenu_instance)
-    local feeds = Config.getFeeds()
-    local feed = feeds[index] or { name = "", url = "", folder = "", include = "", exclude = "" }
-    local function done()
-        Config.saveFeeds(feeds)
-        touchmenu_instance.item_table = self:feedItems()
-        touchmenu_instance:updateItems()
-    end
+function SlowRSS:addFeed(touchmenu_instance)
     local dialog
-    local buttons = {
-        {
-            text = _("Cancel"),
-            id = "close",
-            callback = function() UIManager:close(dialog) end,
-        },
-        {
-            text = _("Save"),
-            is_enter_default = true,
-            callback = function()
-                local f = dialog:getFields()
-                local edited = {
-                    name    = trim(f[1]),
-                    url     = trim(f[2]),
-                    folder  = normaliseFolder(f[3]),
-                    include = trim(f[4]),
-                    exclude = trim(f[5]),
-                }
-                if edited.name == "" or edited.url == "" then return end
-                UIManager:close(dialog)
-                feeds[index or #feeds + 1] = edited
-                done()
-            end,
-        },
-    }
-    if index then
-        table.insert(buttons, 1, {
-            text = _("Delete"),
-            callback = function()
-                UIManager:show(ConfirmBox:new{
-                    text = T(_("Remove feed %1?\nIts articles stay on disk."), feed.name),
-                    ok_text = _("Remove"),
-                    ok_callback = function()
-                        UIManager:close(dialog)
-                        table.remove(feeds, index)
-                        done()
-                    end,
-                })
-            end,
-        })
-    end
     dialog = MultiInputDialog:new{
-        title = index and _("Edit feed") or _("Add feed"),
+        title = _("Add feed"),
         fields = {
-            { description = _("Name"), text = feed.name, hint = "Ars Technica" },
-            { description = _("URL"), text = feed.url, hint = "https://feeds.example.com/rss" },
-            { description = _("Folder (optional)"), text = feed.folder, hint = "Tech/News" },
-            { description = _("Only titles containing (optional)"), text = feed.include, hint = "space|nasa" },
-            { description = _("Skip titles containing (optional)"), text = feed.exclude, hint = "deals|sponsored" },
+            { hint = _("Name") },
+            { hint = _("URL") },
         },
-        buttons = { buttons },
+        buttons = {{
+            {
+                text = _("Cancel"),
+                id = "close",
+                callback = function() UIManager:close(dialog) end,
+            },
+            {
+                text = _("Add"),
+                is_enter_default = true,
+                callback = function()
+                    local f = dialog:getFields()
+                    local name, url = util.trim(f[1]), util.trim(f[2])
+                    if name == "" or url == "" then return end
+                    UIManager:close(dialog)
+                    local feeds = Config.getFeeds()
+                    table.insert(feeds, { name = name, url = url, folder = "", include = "", exclude = "" })
+                    Config.saveFeeds(feeds)
+                    touchmenu_instance.item_table = self:feedItems()
+                    touchmenu_instance:updateItems()
+                end,
+            },
+        }},
     }
     UIManager:show(dialog)
     dialog:onShowKeyboard()
+end
+
+function SlowRSS:feedSettingsItems(index)
+    local function feed() return Config.getFeeds()[index] end
+    local items = {}
+    for _, field in ipairs(FIELDS) do
+        table.insert(items, {
+            text_func = function()
+                local value = feed()[field.key]
+                return T(_("%1: %2"), field.label, value ~= "" and value or _("none"))
+            end,
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
+                editText(field.label, feed()[field.key], field.hint, function(value)
+                    if field.key == "folder" then value = normaliseFolder(value) end
+                    if field.required and value == "" then return end
+                    updateFeed(index, field.key, value)
+                    touchmenu_instance:updateItems()
+                end)
+            end,
+        })
+    end
+    table.insert(items, {
+        text_func = function()
+            return T(_("Articles to fetch: %1"), feed().limit or Config.getSettings().items_per_feed)
+        end,
+        keep_menu_open = true,
+        callback = function(touchmenu_instance)
+            UIManager:show(SpinWidget:new{
+                title_text = _("Articles to fetch"),
+                info_text = _("How many of this feed's newest articles each fetch downloads. Articles already downloaded stay until you delete them."),
+                value = feed().limit or Config.getSettings().items_per_feed,
+                value_min = 1,
+                value_max = 500,
+                value_step = 5,
+                value_hold_step = 25,
+                default_value = Config.getSettings().items_per_feed,
+                callback = function(spin)
+                    updateFeed(index, "limit", spin.value)
+                    touchmenu_instance:updateItems()
+                end,
+            })
+        end,
+        separator = true,
+    })
+    table.insert(items, {
+        text = _("Delete feed"),
+        keep_menu_open = true,
+        callback = function(touchmenu_instance)
+            UIManager:show(ConfirmBox:new{
+                text = T(_("Remove feed %1?\nIts articles stay on disk."), feed().name),
+                ok_text = _("Remove"),
+                ok_callback = function()
+                    local feeds = Config.getFeeds()
+                    table.remove(feeds, index)
+                    Config.saveFeeds(feeds)
+                    touchmenu_instance:backToUpperMenu()
+                    touchmenu_instance.item_table = self:feedItems()
+                    touchmenu_instance:updateItems()
+                end,
+            })
+        end,
+    })
+    return items
 end
 
 -- ── Settings ─────────────────────────────────────────────────────────────────
@@ -171,13 +244,13 @@ function SlowRSS:settingsItems()
     return {
         {
             text_func = function()
-                return T(_("Articles per feed: %1"), Config.getSettings().items_per_feed)
+                return T(_("Default articles to fetch: %1"), Config.getSettings().items_per_feed)
             end,
             keep_menu_open = true,
             callback = function(touchmenu_instance)
                 UIManager:show(SpinWidget:new{
-                    title_text = _("Articles per feed"),
-                    info_text = _("How many articles to keep in each feed's folder. Feeds only publish their latest items, so the folder fills up to this number over successive fetches; older files are deleted beyond it."),
+                    title_text = _("Default articles to fetch"),
+                    info_text = _("How many of a feed's newest articles each fetch downloads, for feeds without their own number. Articles already downloaded stay until you delete them."),
                     value = Config.getSettings().items_per_feed,
                     value_min = 1,
                     value_max = 500,
@@ -233,7 +306,7 @@ function SlowRSS:_runFetch()
         return Trapper:info(message)
     end)
     Trapper:reset()
-    logger.info("SlowRSS: fetch finished:", result.new, "new,", result.removed, "removed,", #result.errors, "errors")
+    logger.info("SlowRSS: fetch finished:", result.new, "new,", #result.errors, "errors")
     if FileManager.instance then
         FileManager.instance:onRefresh()
     end
@@ -242,7 +315,7 @@ function SlowRSS:_runFetch()
     if result.aborted then
         table.insert(lines, _("Fetch aborted."))
     end
-    table.insert(lines, T(_("%1 new, %2 removed."), result.new, result.removed))
+    table.insert(lines, T(_("%1 new articles."), result.new))
     if #result.errors > 0 then
         table.insert(lines, T(_("%1 problem(s):"), #result.errors) .. "\n" .. table.concat(result.errors, "\n"))
     end

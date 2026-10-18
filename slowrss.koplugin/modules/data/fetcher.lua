@@ -1,55 +1,48 @@
 -- SlowRSS: Fetch orchestration
--- Keeps no index: the article files are the state.
+-- Keeps no index: the article files are the state.  Nothing here ever
+-- deletes an article; that is left to the user.
 --
+--   * Each fetch looks at the feed's newest `limit` articles that pass the
+--     title filter (the feed's own limit, else the default setting).
 --   * A file is named after the article's title and records the article's
 --     link, so an article whose file exists is not fetched again.
---   * Only articles newer than the newest one already on disk are written, so
---     an older article you deleted does not come back.
---   * A file's modification time is the article's publish time, which orders
---     the folder by date and decides what the limit trims.
---   * After writing, each feed folder is trimmed to the newest
---     `items_per_feed` files.  Folders fill up to that limit over successive
---     fetches, because feeds only ever publish their latest items.
+--   * A folder only grows at its ends: articles newer than the newest on
+--     disk, or older than the oldest (Substack's archive reaches further back
+--     than its feed).  An article deleted from the middle does not come back.
+--   * A file's modification time is the article's publish time, so sorting
+--     by date orders a folder by publication.
 --
 -- Public API:
---   Fetcher.run(progress) → stats { new, removed, errors, aborted }
+--   Fetcher.run(progress) → stats { new, errors, aborted }
 --     progress(message) → false when the user aborted
 
 local ArticleDoc = require("modules/data/article_doc")
 local Config     = require("modules/data/config")
 local Dates      = require("modules/data/dates")
-local Parser     = require("modules/data/parser")
 local Filter     = require("modules/data/filter")
-local lfs        = require("libs/libkoreader-lfs")
+local Parser     = require("modules/data/parser")
+local Substack   = require("modules/data/substack")
 
 local Fetcher = {}
 
--- Article files in a folder, newest first.
-local function listArticles(dir)
-    local files = {}
-    if lfs.attributes(dir, "mode") ~= "directory" then return files end
-    for name in lfs.dir(dir) do
-        if name:match("%.html$") then
-            local path = dir .. "/" .. name
-            table.insert(files, { path = path, name = name, mtime = lfs.attributes(path, "modification") })
-        end
-    end
-    table.sort(files, function(a, b) return a.mtime > b.mtime end)
-    return files
-end
-
--- Which of the feed's articles to write: matching the title filter, within
--- the limit, not on disk yet, and newer than the newest one that is.
+-- Which of the feed's articles to write: the newest `limit` that match the
+-- title filter, minus those on disk and those that would fill a gap between
+-- articles already on disk.
 local function selectNew(articles, feed, dir, limit)
     local candidates = {}
-    local newest
+    local newest, oldest
+    local considered = 0
     for _, art in ipairs(articles) do
-        if #candidates >= limit then break end
+        if considered >= limit then break end
         if Filter.matches(art.title, feed.include, feed.exclude) then
+            considered = considered + 1
             local path, exists = ArticleDoc.locate(art, dir)
             local ts = Dates.parse(art.date)
             if exists then
-                if ts and (not newest or ts > newest) then newest = ts end
+                if ts then
+                    if not newest or ts > newest then newest = ts end
+                    if not oldest or ts < oldest then oldest = ts end
+                end
             else
                 art.source = feed.name
                 table.insert(candidates, { article = art, path = path, ts = ts })
@@ -58,7 +51,8 @@ local function selectNew(articles, feed, dir, limit)
     end
     local todo = {}
     for _, c in ipairs(candidates) do
-        if not (c.ts and newest and c.ts < newest) then table.insert(todo, c) end
+        local fills_gap = c.ts and newest and c.ts < newest and c.ts > oldest
+        if not fills_gap then table.insert(todo, c) end
     end
     return todo
 end
@@ -66,10 +60,11 @@ end
 function Fetcher.run(progress)
     local settings = Config.getSettings()
     local feeds    = Config.getFeeds()
-    local stats    = { new = 0, removed = 0, errors = {}, aborted = false }
+    local stats    = { new = 0, errors = {}, aborted = false }
 
     for i, feed in ipairs(feeds) do
-        if not progress(string.format("Fetching %s…\n(%d of %d)", feed.name, i, #feeds)) then
+        local heading = string.format("Fetching %s…\n(%d of %d)", feed.name, i, #feeds)
+        if not progress(heading) then
             stats.aborted = true
             return stats
         end
@@ -78,22 +73,39 @@ function Fetcher.run(progress)
             table.insert(stats.errors, feed.name .. ": " .. err)
         else
             local dir = ArticleDoc.feedDir(settings.articles_dir, feed)
-            for _, item in ipairs(selectNew(articles, feed, dir, settings.items_per_feed)) do
-                if not progress(string.format("Writing %s\n(%s)", item.article.title, feed.name)) then
+            local limit = feed.limit or settings.items_per_feed
+            local older, aborted = Substack.olderArticles(feed, articles, limit, function(line)
+                return progress(heading .. "\n\n" .. line)
+            end)
+            if aborted then
+                stats.aborted = true
+                return stats
+            end
+            for _, art in ipairs(older) do table.insert(articles, art) end
+            for _, item in ipairs(selectNew(articles, feed, dir, limit)) do
+                heading = string.format("Writing %s\n(%s)", item.article.title, feed.name)
+                if not progress(heading) then
                     stats.aborted = true
                     return stats
                 end
-                local ok, write_err = ArticleDoc.write(item.article, item.path, item.ts)
+                local ok, write_err = true, nil
+                if item.article.body_url then
+                    ok, write_err = Substack.fetchBody(item.article)
+                end
+                if ok then
+                    ok, write_err = ArticleDoc.write(item.article, item.path, item.ts, function(line)
+                        return progress(heading .. "\n\n" .. line)
+                    end)
+                end
+                if write_err == "aborted" then
+                    stats.aborted = true
+                    return stats
+                end
                 if ok then
                     stats.new = stats.new + 1
                 else
                     table.insert(stats.errors, item.article.title .. ": " .. tostring(write_err))
                 end
-            end
-            local files = listArticles(dir)
-            for k = settings.items_per_feed + 1, #files do
-                ArticleDoc.remove(files[k].path)
-                stats.removed = stats.removed + 1
             end
         end
     end

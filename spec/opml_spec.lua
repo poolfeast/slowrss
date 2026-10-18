@@ -5,7 +5,7 @@ local NESTED = [[<?xml version="1.0"?>
 <opml version="2.0"><head><title>x</title></head><body>
   <outline text="Top" type="rss" xmlUrl="https://top.example/feed"/>
   <outline text="Tech" title="Tech">
-    <outline title="Ars &amp; Co" type="rss" xmlUrl="https://ars.example/rss?a=1&amp;b=2" htmlUrl="https://ars.example" slowrssInclude="space|nasa" slowrssExclude="deals"/>
+    <outline title="Ars &amp; Co" type="rss" xmlUrl="https://ars.example/rss?a=1&amp;b=2" htmlUrl="https://ars.example" slowrssInclude="space|nasa" slowrssExclude="deals" slowrssLimit="40"/>
     <outline text="Deep">
       <outline text="Nested" type="rss" xmlUrl="https://deep.example/feed" />
     </outline>
@@ -22,6 +22,7 @@ return {
         H.eq(feeds[2].url, "https://ars.example/rss?a=1&b=2")
         H.eq(feeds[2].include, "space|nasa");  H.eq(feeds[2].exclude, "deals")
         H.eq(feeds[1].include, "");            H.eq(feeds[1].exclude, "")
+        H.eq(feeds[2].limit, 40);              H.eq(feeds[1].limit, nil)
         H.eq(feeds[3].name, "Nested");     H.eq(feeds[3].folder, "Tech/Deep")
     end,
     round_trip = function()

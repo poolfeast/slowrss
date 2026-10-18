@@ -5,11 +5,12 @@
 -- a feed inside <outline text="Tech"> gets folder = "Tech", and its articles
 -- are written to a "Tech/<feed name>" directory.
 --
--- Feeds may carry a title filter as extra attributes, which other readers
+-- Feeds may carry SlowRSS settings as extra attributes, which other readers
 -- ignore:  slowrssInclude="space|nasa"  slowrssExclude="deals|sponsored"
+--          slowrssLimit="40" (articles to fetch; the default setting when absent)
 --
 -- Public API:
---   OPML.parse(content)        → { {name, url, folder, include, exclude}, … }  missing values are ""
+--   OPML.parse(content)        → { {name, url, folder, include, exclude, limit}, … }  missing strings are "", limit nil
 --   OPML.serialize(feeds)      → OPML document string
 --   OPML.read(path)            → feeds, or nil if the file does not exist
 --   OPML.write(path, feeds)    → true on success, false on I/O error
@@ -56,6 +57,7 @@ function OPML.parse(content)
                     folder  = table.concat(stack, "/"),
                     include = getAttr(attrs, "slowrssInclude") or "",
                     exclude = getAttr(attrs, "slowrssExclude") or "",
+                    limit   = tonumber(getAttr(attrs, "slowrssLimit") or ""),
                 })
             end
             if not self_closing then
@@ -95,6 +97,7 @@ function OPML.serialize(feeds)
             local filter = ""
             if feed.include ~= "" then filter = filter .. string.format(' slowrssInclude="%s"', escAttr(feed.include)) end
             if feed.exclude ~= "" then filter = filter .. string.format(' slowrssExclude="%s"', escAttr(feed.exclude)) end
+            if feed.limit then filter = filter .. string.format(' slowrssLimit="%d"', feed.limit) end
             table.insert(lines, string.format('%s<outline text="%s" title="%s" type="rss" xmlUrl="%s"%s/>',
                 indent, escAttr(feed.name), escAttr(feed.name), escAttr(feed.url), filter))
         end
