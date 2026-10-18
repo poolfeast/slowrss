@@ -83,7 +83,7 @@ function Fetcher.run(progress)
             end
             for _, art in ipairs(older) do table.insert(articles, art) end
             for _, item in ipairs(selectNew(articles, feed, dir, limit)) do
-                heading = string.format("Writing %s\n(%s)", item.article.title, feed.name)
+                heading = string.format("%s\n(%s)", item.article.title, feed.name)
                 if not progress(heading) then
                     stats.aborted = true
                     return stats
