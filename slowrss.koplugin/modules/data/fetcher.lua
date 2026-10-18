@@ -87,7 +87,6 @@ function Fetcher.run(progress)
             end
             for _, art in ipairs(older) do table.insert(articles, art) end
             for _, item in ipairs(selectNew(articles, feed, dir, limit)) do
-                item.feed = feed
                 table.insert(todo, item)
             end
         end
@@ -96,7 +95,7 @@ function Fetcher.run(progress)
     -- Second pass: download them, the progress bar counting articles
     for k, item in ipairs(todo) do
         local fraction = (k - 1) / #todo
-        local heading = string.format("%s\n(%s)\n%d of %d", item.article.title, item.feed.name, k, #todo)
+        local heading = item.article.title
         if not progress(heading, fraction) then
             stats.aborted = true
             return stats
